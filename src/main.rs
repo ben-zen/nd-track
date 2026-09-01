@@ -26,7 +26,7 @@ struct Date {
     // #[extract(from_tag = "record_calendar_month")]
     month: u8,
     // #[extract(from_tag = "record_calendar_day")]
-    day: u8
+    day: u8,
 }
 
 #[derive(Debug, Default)]
@@ -34,7 +34,7 @@ struct DateBuilder {
     year: Option<u16>,
     quarter: Option<u8>,
     month: Option<u8>,
-    day: Option<u8>
+    day: Option<u8>,
 }
 
 impl DateBuilder {
@@ -44,7 +44,7 @@ impl DateBuilder {
             None => {
                 self.year = Some(year);
                 Ok(self)
-            },
+            }
         }
     }
 
@@ -54,7 +54,7 @@ impl DateBuilder {
             None => {
                 self.quarter = Some(quarter);
                 Ok(self)
-            },
+            }
         }
     }
 
@@ -64,7 +64,7 @@ impl DateBuilder {
             None => {
                 self.month = Some(month);
                 Ok(self)
-            },
+            }
         }
     }
 
@@ -74,30 +74,27 @@ impl DateBuilder {
             None => {
                 self.day = Some(day);
                 Ok(self)
-            },
+            }
         }
     }
 
     fn incomplete(&self) -> bool {
-        self.year.is_none()
-        || self.quarter.is_none()
-        || self.month.is_none()
-        || self.day.is_none()
+        self.year.is_none() || self.quarter.is_none() || self.month.is_none() || self.day.is_none()
     }
 
     fn build(self) -> Result<Date> {
         Ok(Date {
-            year: self.year.ok_or_else(|| { anyhow!("missing year") })?,
-            quarter: self.quarter.ok_or_else(|| { anyhow!("missing quarter") })?,
-            month: self.month.ok_or_else(|| { anyhow!("missing month") })?,
-            day: self.day.ok_or_else(|| { anyhow!("missing day") })?
+            year: self.year.ok_or_else(|| anyhow!("missing year"))?,
+            quarter: self.quarter.ok_or_else(|| anyhow!("missing quarter"))?,
+            month: self.month.ok_or_else(|| anyhow!("missing month"))?,
+            day: self.day.ok_or_else(|| anyhow!("missing day"))?,
         })
     }
 }
 
 impl DateBuilder {
     // Extract from XML. Reports if the element is consumed.
-    fn read_from_element(self, tag: &str,  content: &Document) -> Result<(Self, bool)> {
+    fn read_from_element(self, tag: &str, content: &Document) -> Result<(Self, bool)> {
         tracing::trace!("reading {tag}, {content:?}");
         let Document::Content(Some(c)) = content else {
             bail!("encountered an unsupported doc element {content:?}");
@@ -127,19 +124,25 @@ impl DateBuilder {
             bail!("bad extraction");
         };
 
-        elems.iter()
-        .filter_map(|elem| {
-            if let Document::Element(tag, inner, _) = elem {
-                Some((tag, inner))
-            } else {
-                None
-            }
-        })
-        .try_fold(DateBuilder::default(), |builder, (tag, inner)| -> Result<DateBuilder> {
-            let (build, _consumed) = builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
-            //assert!(consumed);
-            Ok(build)
-        })?.build()
+        elems
+            .iter()
+            .filter_map(|elem| {
+                if let Document::Element(tag, inner, _) = elem {
+                    Some((tag, inner))
+                } else {
+                    None
+                }
+            })
+            .try_fold(
+                DateBuilder::default(),
+                |builder, (tag, inner)| -> Result<DateBuilder> {
+                    let (build, _consumed) =
+                        builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
+                    //assert!(consumed);
+                    Ok(build)
+                },
+            )?
+            .build()
     }
 }
 
@@ -148,13 +151,13 @@ struct FiscalDate {
     // #[extract(from_tag = "record_fiscal_year")]
     year: u16,
     // #[extract(from_tag = "record_fiscal_quarter")]
-    quarter: u8
+    quarter: u8,
 }
 
 #[derive(Default)]
 struct FiscalDateBuilder {
     year: Option<u16>,
-    quarter: Option<u8>
+    quarter: Option<u8>,
 }
 
 // Builder impl
@@ -181,8 +184,8 @@ impl FiscalDateBuilder {
 
     fn build(self) -> Result<FiscalDate> {
         Ok(FiscalDate {
-            year: self.year.ok_or_else(|| { anyhow!("missing year") })?,
-            quarter: self.quarter.ok_or_else(|| { anyhow!("missing quarter") })?
+            year: self.year.ok_or_else(|| anyhow!("missing year"))?,
+            quarter: self.quarter.ok_or_else(|| anyhow!("missing quarter"))?,
         })
     }
 }
@@ -218,19 +221,25 @@ impl FiscalDateBuilder {
             bail!("bad extraction");
         };
 
-        elems.iter()
-        .filter_map(|elem| {
-            if let Document::Element(tag, inner, _) = elem {
-                Some((tag, inner))
-            } else {
-                None
-            }
-        })
-        .try_fold(FiscalDateBuilder::default(), |builder, (tag, inner)| -> Result<FiscalDateBuilder> {
-            let (build, _consumed) = builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
-            //assert!(consumed);
-            Ok(build)
-        })?.build()
+        elems
+            .iter()
+            .filter_map(|elem| {
+                if let Document::Element(tag, inner, _) = elem {
+                    Some((tag, inner))
+                } else {
+                    None
+                }
+            })
+            .try_fold(
+                FiscalDateBuilder::default(),
+                |builder, (tag, inner)| -> Result<FiscalDateBuilder> {
+                    let (build, _consumed) =
+                        builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
+                    //assert!(consumed);
+                    Ok(build)
+                },
+            )?
+            .build()
     }
 }
 
@@ -308,9 +317,15 @@ impl LedgerEntryBuilder {
         Ok(LedgerEntry {
             date: self.date.build()?,
             fiscal_date: self.fiscal_date.build()?,
-            public_debt: self.public_debt.ok_or_else(|| { anyhow!("missing public_debt") })?,
-            intragov_debt: self.intragov_debt.ok_or_else(|| { anyhow!("missing intragov_debt") })?,
-            total_debt: self.total_debt.ok_or_else(|| { anyhow!("missing total_debt") })?,
+            public_debt: self
+                .public_debt
+                .ok_or_else(|| anyhow!("missing public_debt"))?,
+            intragov_debt: self
+                .intragov_debt
+                .ok_or_else(|| anyhow!("missing intragov_debt"))?,
+            total_debt: self
+                .total_debt
+                .ok_or_else(|| anyhow!("missing total_debt"))?,
         })
     }
 }
@@ -358,19 +373,25 @@ impl LedgerEntryBuilder {
             bail!("bad extraction");
         };
 
-        elems.iter()
-        .filter_map(|elem| {
-            if let Document::Element(tag, inner, _) = elem {
-                Some((tag, inner))
-            } else {
-                None
-            }
-        })
-        .try_fold(LedgerEntryBuilder::default(), |builder, (tag, inner)| -> Result<LedgerEntryBuilder> {
-            let (build, _consumed) = builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
-            //assert!(consumed);
-            Ok(build)
-        })?.build()
+        elems
+            .iter()
+            .filter_map(|elem| {
+                if let Document::Element(tag, inner, _) = elem {
+                    Some((tag, inner))
+                } else {
+                    None
+                }
+            })
+            .try_fold(
+                LedgerEntryBuilder::default(),
+                |builder, (tag, inner)| -> Result<LedgerEntryBuilder> {
+                    let (build, _consumed) =
+                        builder.read_from_element(tag.name.local_part.as_str(), &inner)?;
+                    //assert!(consumed);
+                    Ok(build)
+                },
+            )?
+            .build()
     }
 }
 
@@ -381,9 +402,9 @@ fn main() -> Result<()> {
 
     let lookup = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?filter=record_date:gte:2026-07-22&format=xml";
     let client = reqwest::blocking::Client::builder()
-    .user_agent(APP_USER_AGENT)
-    .timeout(Duration::from_secs(60))
-    .build()?;
+        .user_agent(APP_USER_AGENT)
+        .timeout(Duration::from_secs(60))
+        .build()?;
 
     let lookup_span = tracing::info_span!("requesting fiscal data");
     let ls_guard = lookup_span.enter();
@@ -394,17 +415,21 @@ fn main() -> Result<()> {
     let parsing_span = tracing::info_span!("parsing data");
     let ps_guard = parsing_span.enter();
 
-    let (_, records) = Document::parse_elements_by_tag_name(response_doc.as_str(), "data-element", &None)?;
+    let (_, records) =
+        Document::parse_elements_by_tag_name(response_doc.as_str(), "data-element", &None)?;
     let (_, _links) = Document::parse_element_by_tag_name(response_doc.as_str(), "links", &None)?;
     let (_, _labels) = Document::parse_element_by_tag_name(response_doc.as_str(), "labels", &None)?;
 
     drop(ps_guard);
 
     // This should get fixed eventually...
-    let debt_records = records.iter().map(LedgerEntryBuilder::build_from_document).map(|entry| { entry.unwrap() });
+    let debt_records = records
+        .iter()
+        .map(LedgerEntryBuilder::build_from_document)
+        .map(|entry| entry.unwrap());
 
     println!("Received debt records:");
-    debt_records.for_each(|r| { println!("{r:?}")});
+    debt_records.for_each(|r| println!("{r:?}"));
 
     /*println!("Pagination:\n{links:?}");
     println!("Labels:\n{labels:?}");*/
@@ -414,15 +439,20 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::bail;
-    use nom_xml::{Document};
     use super::*;
+    use anyhow::bail;
+    use nom_xml::Document;
 
     #[test]
     fn test_build_date() -> Result<()> {
         let builder = DateBuilder::default();
 
-        let built_date = builder.set_year(2026)?.set_quarter(3)?.set_month(8)?.set_day(27)?.build()?;
+        let built_date = builder
+            .set_year(2026)?
+            .set_quarter(3)?
+            .set_month(8)?
+            .set_day(27)?
+            .build()?;
 
         assert_eq!(built_date.year, 2026);
         assert_eq!(built_date.quarter, 3);
@@ -524,5 +554,4 @@ mod tests {
         assert_eq!(built_ledger_entry.fiscal_date.quarter, 4);
         Ok(())
     }
-
 }
