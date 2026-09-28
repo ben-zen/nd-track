@@ -1,7 +1,7 @@
 # nd-track: CLI national debt tracker
 
 As an experiment into building tools using nom-xml & nom-xml-derive, I decided to
-first build a tool to read another Treasury API first, the national debt to the
+first build a tool to read a simple Treasury API first, the national debt to the
 penny dataset. I'm going to start with a utility that just grabs the past couple
 of days, outputs today's data, and compares it to the day before.
 

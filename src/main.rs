@@ -29,6 +29,21 @@ struct Date {
     day: u8,
 }
 
+impl Date {
+    fn try_init(year: u16, month: u8, day: u8) -> Result<Self> {
+        // validate year
+        let quarter = match month {
+            1..=3 => 1,
+            4..=6 => 2,
+            7..=9 => 3,
+            10..=12 => 4,
+            _ => bail!("couldn't capture a quarter for month {month}")
+        };
+        
+        Ok(Date { year, quarter, month, day})
+    }
+}
+
 #[derive(Debug, Default)]
 struct DateBuilder {
     year: Option<u16>,
@@ -417,7 +432,7 @@ fn main() -> Result<()> {
 
     let (_, records) =
         Document::parse_elements_by_tag_name(response_doc.as_str(), "data-element", &None)?;
-    let (_, _links) = Document::parse_element_by_tag_name(response_doc.as_str(), "links", &None)?;
+    let (_, links) = Document::parse_element_by_tag_name(response_doc.as_str(), "links", &None)?;
     let (_, _labels) = Document::parse_element_by_tag_name(response_doc.as_str(), "labels", &None)?;
 
     drop(ps_guard);
@@ -431,8 +446,8 @@ fn main() -> Result<()> {
     println!("Received debt records:");
     debt_records.for_each(|r| println!("{r:?}"));
 
-    /*println!("Pagination:\n{links:?}");
-    println!("Labels:\n{labels:?}");*/
+    println!("Pagination:\n{links:?}");
+    /*println!("Labels:\n{labels:?}");*/
 
     Ok(())
 }
@@ -442,6 +457,14 @@ mod tests {
     use super::*;
     use anyhow::bail;
     use nom_xml::Document;
+
+    #[test]
+    fn test_date_init() -> Result<()> {
+        Date::try_init(2026, 9, 28).or_else(|e| bail!("expected success, not {e:?}")).map(|_| ()).unwrap();
+        Date::try_init(2026, 28, 9).map_or_else(|_| Ok(()), |d| bail!("Expected failure, not {d:?}")).unwrap();
+        
+        Ok(())
+    }
 
     #[test]
     fn test_build_date() -> Result<()> {
@@ -552,6 +575,7 @@ mod tests {
 
         assert_eq!(built_ledger_entry.date.year, 2026);
         assert_eq!(built_ledger_entry.fiscal_date.quarter, 4);
+        assert_eq!(built_ledger_entry.total_debt, Money::from_minor_units(4007752983194294, USD));
         Ok(())
     }
 }
