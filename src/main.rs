@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::fmt;
 
 use anyhow::{Result, anyhow, bail};
-use argparse::{ArgumentParser, Store};
+use argparse::{ArgumentParser, Store, StoreTrue};
 use doubloon::Money;
 use doubloon::iso_currencies::USD;
 use nom::bytes::complete::take_while_m_n;
@@ -13,6 +13,8 @@ use nom::{character::complete::char, combinator::eof, sequence::tuple};
 use nom_xml::Document;
 use reqwest;
 use rust_decimal::Decimal;
+use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 fn dec_string_to_money(value: &str) -> Result<Money<USD>> {
     Ok(Money::new(Decimal::from_str_exact(value)?, USD))
@@ -453,16 +455,24 @@ static APP_USER_AGENT: &str = "nd-track/devel";
 static DEFAULT_LOOKUP_DATE: &str = "2026-07-22";
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt().init();
+    let mut tracing_init = tracing_subscriber::fmt();
     let mut date = String::from(DEFAULT_LOOKUP_DATE);
+    let mut verbose = false;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description(r#"Reads the U.S. Treasury "Debt to the Penny" API for a span of time."#);
         ap.refer(&mut date).add_option(&["-d", "--date"], Store, "Starting date for the lookup in YYYY-MM-DD format; defaults to 2026-07-22.");
+        ap.refer(&mut verbose).add_option(&["-v", "--verbose"], StoreTrue, "Write more information while running.");
         ap.parse_args_or_exit();
     }
 
+    if verbose {
+        tracing_init = tracing_init.with_max_level(Level::TRACE).with_span_events(FmtSpan::ACTIVE);
+    }
+
     let start_date: Date = date.parse().expect("This is an expected date.");
+
+    tracing_init.init();
 
     let lookup = std::format!(
         r#"https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?filter=record_date:gte:{start_date}&format=xml"#
