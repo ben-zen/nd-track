@@ -8,6 +8,21 @@ of days, outputs today's data, and compares it to the day before.
 From there, it's a matter of adding filters, and eventually developing a TUI-based
 interactive mode.
 
+## Current command line interface
+
+```
+> $ nd-track --help
+Usage:
+  nd-track [OPTIONS]
+
+Reads the U.S. Treasury "Debt to the Penny" API for a span of time.
+
+Optional arguments:
+  -h,--help             Show this help message and exit
+  -d,--date DATE        Starting date for the lookup in YYYY-MM-DD format;
+                        defaults to 2026-07-22.
+```
+
 ## dev log
 
 I started out trying to use `nom-xml-derive`, but about the point where I wanted to

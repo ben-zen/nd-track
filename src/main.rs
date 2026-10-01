@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Artistic-2.0
 
 use std::time::Duration;
-use std::{boxed, fmt};
+use std::fmt;
 
 use anyhow::{Result, anyhow, bail};
 use argparse::{ArgumentParser, Store};
@@ -10,10 +10,9 @@ use doubloon::Money;
 use doubloon::iso_currencies::USD;
 use nom::bytes::complete::take_while_m_n;
 use nom::{character::complete::char, combinator::eof, sequence::tuple};
-use nom_xml::{Document, config::Config, parse::Parse, tag::Tag};
+use nom_xml::Document;
 use reqwest;
 use rust_decimal::Decimal;
-use tracing::Instrument;
 
 fn dec_string_to_money(value: &str) -> Result<Money<USD>> {
     Ok(Money::new(Decimal::from_str_exact(value)?, USD))
@@ -37,11 +36,11 @@ impl std::str::FromStr for Date {
 
     fn from_str(s: &str) -> Result<Self> {
         // expect YYYY-MM-DD format
-        let year = nom::bytes::complete::take_while_m_n(4, 4, |c: char| c.is_digit(10));
-        let month = nom::bytes::complete::take_while_m_n(2, 2, |c: char| c.is_digit(10));
-        let day = nom::bytes::complete::take_while_m_n(2, 2, |c: char| c.is_digit(10));
+        let year = take_while_m_n(4, 4, |c: char| c.is_digit(10));
+        let month = take_while_m_n(2, 2, |c: char| c.is_digit(10));
+        let day = take_while_m_n(2, 2, |c: char| c.is_digit(10));
 
-        let (_, (year, _, month, _, day, _)) = tuple::<_, _, nom::error::Error<&str>, _>((year, nom::character::complete::char('-'), month, nom::character::complete::char('-'), day, eof))(s).map_err(|e| anyhow!("dates should be in the format YYYY-MM-DD: {:?}", e))?;
+        let (_, (year, _, month, _, day, _)) = tuple::<_, _, nom::error::Error<&str>, _>((year, char('-'), month, char('-'), day, eof))(s).map_err(|e| anyhow!("dates should be in the format YYYY-MM-DD: {:?}", e))?;
 
         let year: u16 = year.parse()?;
         let month: u8 = month.parse()?;
