@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+argparse = "0.2.2"
 doubloon = "3.2.0"
+nom = "7.1.3"
 nom-xml = "0.3.0"
 nom-xml-derive = "0.1.0"
 reqwest = { version="0.13.4", default-features = false, features=["rustls", "blocking", "query", "http2", "default-tls"] }

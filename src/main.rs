@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: Copyright Ben Lewis, 2026.
 // SPDX-License-Identifier: Artistic-2.0
 
-use std::boxed;
 use std::time::Duration;
+use std::{boxed, fmt};
 
 use anyhow::{Result, anyhow, bail};
+use argparse::{ArgumentParser, Store};
 use doubloon::Money;
 use doubloon::iso_currencies::USD;
+use nom::bytes::complete::take_while_m_n;
+use nom::{character::complete::char, combinator::eof, sequence::tuple};
 use nom_xml::{Document, config::Config, parse::Parse, tag::Tag};
 use reqwest;
 use rust_decimal::Decimal;
@@ -16,7 +19,7 @@ fn dec_string_to_money(value: &str) -> Result<Money<USD>> {
     Ok(Money::new(Decimal::from_str_exact(value)?, USD))
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Date {
     // record_calendar_year
     // #[extract(from_tag = "record_calendar_year")]
@@ -29,6 +32,32 @@ struct Date {
     day: u8,
 }
 
+impl std::str::FromStr for Date {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        // expect YYYY-MM-DD format
+        let year = nom::bytes::complete::take_while_m_n(4, 4, |c: char| c.is_digit(10));
+        let month = nom::bytes::complete::take_while_m_n(2, 2, |c: char| c.is_digit(10));
+        let day = nom::bytes::complete::take_while_m_n(2, 2, |c: char| c.is_digit(10));
+
+        let (_, (year, _, month, _, day, _)) = tuple::<_, _, nom::error::Error<&str>, _>((year, nom::character::complete::char('-'), month, nom::character::complete::char('-'), day, eof))(s).map_err(|e| anyhow!("dates should be in the format YYYY-MM-DD: {:?}", e))?;
+
+        let year: u16 = year.parse()?;
+        let month: u8 = month.parse()?;
+        let day: u8 = day.parse()?;
+
+        Date::try_init(year, month, day)
+    }
+}
+
+impl fmt::Display for Date {
+    // TODO: support alternate formats
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:04}-{:02}-{:02}", self.year, self.month, self.day) // YYYY-MM-DD
+    }
+}
+
 impl Date {
     fn try_init(year: u16, month: u8, day: u8) -> Result<Self> {
         // validate year
@@ -37,10 +66,15 @@ impl Date {
             4..=6 => 2,
             7..=9 => 3,
             10..=12 => 4,
-            _ => bail!("couldn't capture a quarter for month {month}")
+            _ => bail!("couldn't capture a quarter for month {month}"),
         };
-        
-        Ok(Date { year, quarter, month, day})
+
+        Ok(Date {
+            year,
+            quarter,
+            month,
+            day,
+        })
     }
 }
 
@@ -110,9 +144,14 @@ impl DateBuilder {
 impl DateBuilder {
     // Extract from XML. Reports if the element is consumed.
     fn read_from_element(self, tag: &str, content: &Document) -> Result<(Self, bool)> {
+        if !self.incomplete() {
+            return Ok((self, false));
+        };
+
         tracing::trace!("reading {tag}, {content:?}");
         let Document::Content(Some(c)) = content else {
-            bail!("encountered an unsupported doc element {content:?}");
+            tracing::info!("unexpected non-content doc element: {content:?}");
+            return Ok((self, false));
         };
 
         match tag {
@@ -121,7 +160,7 @@ impl DateBuilder {
             "record_calendar_month" => Ok((self.set_month(c.parse()?)?, true)),
             "record_calendar_day" => Ok((self.set_day(c.parse()?)?, true)),
             _ => {
-                tracing::trace!("ignored {tag}");
+                tracing::trace!("couldn't parse {tag}");
                 Ok((self, false))
             }
         }
@@ -211,14 +250,15 @@ impl FiscalDateBuilder {
     /// It is an error to pass anything else as the &Document argument.
     fn read_from_element(self, tag: &str, content: &Document) -> Result<(Self, bool)> {
         let Document::Content(Some(c)) = content else {
-            bail!("encountered an unsupported doc element {content:?}");
+            tracing::info!("unexpected non-content doc element: {content:?}");
+            return Ok((self, false));
         };
 
         match tag {
             "record_fiscal_year" => Ok((self.set_year(c.parse()?)?, true)),
             "record_fiscal_quarter" => Ok((self.set_quarter(c.parse()?)?, true)),
             _ => {
-                tracing::trace!("ignored {tag}");
+                tracing::trace!("couldn't parse {tag}");
                 Ok((self, false))
             }
         }
@@ -411,11 +451,23 @@ impl LedgerEntryBuilder {
 }
 
 static APP_USER_AGENT: &str = "nd-track/devel";
+static DEFAULT_LOOKUP_DATE: &str = "2026-07-22";
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
+    let mut date = String::from(DEFAULT_LOOKUP_DATE);
+    {
+        let mut ap = ArgumentParser::new();
+        ap.set_description(r#"Reads the U.S. Treasury "Debt to the Penny" API for a span of time."#);
+        ap.refer(&mut date).add_option(&["-d", "--date"], Store, "Starting date for the lookup in YYYY-MM-DD format; defaults to 2026-07-22.");
+        ap.parse_args_or_exit();
+    }
 
-    let lookup = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?filter=record_date:gte:2026-07-22&format=xml";
+    let start_date: Date = date.parse().expect("This is an expected date.");
+
+    let lookup = std::format!(
+        r#"https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?filter=record_date:gte:{start_date}&format=xml"#
+    );
     let client = reqwest::blocking::Client::builder()
         .user_agent(APP_USER_AGENT)
         .timeout(Duration::from_secs(60))
@@ -460,9 +512,16 @@ mod tests {
 
     #[test]
     fn test_date_init() -> Result<()> {
-        Date::try_init(2026, 9, 28).or_else(|e| bail!("expected success, not {e:?}")).map(|_| ()).unwrap();
-        Date::try_init(2026, 28, 9).map_or_else(|_| Ok(()), |d| bail!("Expected failure, not {d:?}")).unwrap();
-        
+        Date::try_init(2026, 28, 9)
+            .map_or_else(|_| Ok(()), |d| bail!("Expected failure, not {d:?}"))
+            .unwrap();
+        let demo_date = Date::try_init(2026, 9, 28)
+            .or_else(|e| bail!("expected success, not {e:?}"))
+            .unwrap();
+        assert_eq!(demo_date.to_string(), String::from("2026-09-28"));
+
+        assert_eq!(Date::try_init(2026, 9, 28).unwrap(), "2026-09-28".parse()?);
+
         Ok(())
     }
 
@@ -575,7 +634,10 @@ mod tests {
 
         assert_eq!(built_ledger_entry.date.year, 2026);
         assert_eq!(built_ledger_entry.fiscal_date.quarter, 4);
-        assert_eq!(built_ledger_entry.total_debt, Money::from_minor_units(4007752983194294, USD));
+        assert_eq!(
+            built_ledger_entry.total_debt,
+            Money::from_minor_units(4007752983194294, USD)
+        );
         Ok(())
     }
 }
